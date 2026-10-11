@@ -72,7 +72,7 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
     comparison = compare_extractors(pdf_path, include_ocr=force_ocr,
                                     include_mistral=use_mistral_ocr)
     winner_name = comparison["winner"]["winner"]
-    winner_metrics = comparison["results"][winner_name]
+    winner_metrics = comparison["results"].get(winner_name, {})
     stages["extract_s"] = round(time.perf_counter() - t0, 3)
 
     # Recover the winning text: re-run is wasteful; comparison already ran
@@ -80,13 +80,20 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
     # for the full text (cheap relative to OCR/LLM).
     from .extractors import EXTRACTORS
     t0 = time.perf_counter()
-    try:
-        full: ExtractionResult = EXTRACTORS[winner_name](pdf_path)
-        raw_text = full.text
-        tables = full.tables
-    except RuntimeError as e:  # e.g. tesseract binaries missing
-        raw_text, tables = "", []
-        winner_metrics = {**winner_metrics, "ocr_error": str(e)}
+    raw_text, tables = "", []
+    if winner_name and winner_name in EXTRACTORS:
+        try:
+            full: ExtractionResult = EXTRACTORS[winner_name](pdf_path)
+            raw_text = full.text
+            tables = full.tables
+        except RuntimeError as e:  # e.g. tesseract binaries missing
+            winner_metrics = {**winner_metrics, "ocr_error": str(e)}
+        except Exception as e:  # noqa: BLE001 — winner must not kill pipeline
+            winner_metrics = {**winner_metrics,
+                              "extract_error": f"{winner_name} crashed: {e}"}
+    else:
+        winner_metrics = {**winner_metrics,
+                          "extract_error": "no usable extractor winner"}
     stages["extract_full_s"] = round(time.perf_counter() - t0, 3)
 
     # 2. Clean.
