@@ -1,8 +1,9 @@
 # doc-extract-eval
 
-Compare PDF text extractors (pypdf, pdfplumber, PyMuPDF, Tesseract OCR) on
-real documents, then pipe the output through an LLM for structured business
-summaries. Upload a doc, watch each stage, see which extractor wins.
+Compare PDF text extractors (pypdf, pdfplumber, PyMuPDF, Tesseract OCR,
+Mistral cloud OCR) on real documents, then pipe the output through an LLM
+for structured business summaries. Upload a doc, watch each stage, see which
+extractor wins.
 
 This demos the classic document-AI flow: **extract → clean → chunk →
 summarize → structured data** — the same approach behind invoice processing,
@@ -37,6 +38,33 @@ streamlit run dashboard.py
 ```
 
 No `PYTHONPATH` needed — `pytest.ini` sets `pythonpath = src`.
+
+## OCR setup
+
+**Tesseract (local, free).** `pytesseract` on pip is only a wrapper — you
+also need the `tesseract` and `poppler` system binaries:
+
+```bash
+conda install -c conda-forge tesseract poppler
+```
+
+(Homebrew dropped Intel Macs, so conda-forge is the reliable source there.)
+If the binaries aren't on your PATH after install, add conda's bin directory:
+
+```bash
+export PATH="$PATH:$(conda info --base)/bin"
+```
+
+**Mistral OCR (cloud, free tier).** Get a key at
+[console.mistral.ai](https://console.mistral.ai), then:
+
+```bash
+export MISTRAL_API_KEY=your-key-here
+```
+
+Note: `requirements.txt` pins `mistralai>=1.0,<2.0` — v3 restructured the
+entire SDK API. The free tier is rate-limited; if you hit 429s, wait a few
+minutes and retry, or check your quota in the Mistral console.
 
 ## What it does
 
