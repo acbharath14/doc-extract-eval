@@ -78,11 +78,18 @@ force_ocr = st.checkbox("Force Tesseract OCR", value=False,
                         help="Run local OCR even when text extractors succeed.")
 use_mistral = st.checkbox("Include Mistral cloud OCR", value=False,
                         help="Needs MISTRAL_API_KEY. Uses API credit; never automatic.")
+with st.expander("Ground truth (optional)"):
+    st.caption("Paste expected text to score extractors by accuracy (F1) "
+               "instead of character count. Or place a `<name>.txt` next to "
+               "the PDF — it's auto-loaded.")
+    gt_text = st.text_area("Expected text", height=150,
+                           key="gt_text", value="")
 if st.button("Compare extractors", type="primary"):
     with st.spinner("Running pypdf, pdfplumber, PyMuPDF…"):
         try:
             comp = compare_extractors(pdf_path, include_ocr=force_ocr,
-                                       include_mistral=use_mistral)
+                                       include_mistral=use_mistral,
+                                       ground_truth=gt_text.strip() or None)
         except FileNotFoundError as e:
             st.error(str(e))
             st.stop()
@@ -101,9 +108,13 @@ comp = st.session_state.get("comparison")
 if comp:
     st.subheader("Extractor comparison")
     winner = comp["winner"]["winner"]
+    scored_by = comp["winner"].get("scored_by", "char_count")
+    if comp.get("ground_truth_used"):
+        st.info(f"Scored against ground truth — winner picked by F1, "
+                f"not character count.")
     rows = []
     for name, m in comp["results"].items():
-        rows.append({
+        row = {
             "extractor": name + (" 🏆" if name == winner else ""),
             "chars": f"{m['char_count']:,}",
             "words": f"{m['words']:,}",
@@ -113,7 +124,12 @@ if comp:
             "time (s)": m["elapsed_s"],
             "warnings": m["n_warnings"],
             "OCR conf.": f"{m['ocr_confidence']:.1f}" if m["ocr_confidence"] else "—",
-        })
+        }
+        if "gt" in m:
+            row["F1"] = f"{m['gt']['f1']:.3f}"
+            row["precision"] = f"{m['gt']['precision']:.3f}"
+            row["recall"] = f"{m['gt']['recall']:.3f}"
+        rows.append(row)
     st.dataframe(rows, use_container_width=True, hide_index=True)
     st.caption(f"Winner: **{winner}** — {comp['winner']['reason']}")
     if comp["ocr_error"]:
