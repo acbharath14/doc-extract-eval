@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 
 from .extractors import EXTRACTORS, OCR_EXTRACTORS, ExtractionResult
+from .scoring import score_against_ground_truth, load_ground_truth
 
 
 def _words(text: str) -> int:
@@ -18,8 +19,13 @@ def _table_cells(tables: list) -> int:
     return sum(len(row) for table in tables for row in table)
 
 
-def score_result(res: ExtractionResult) -> dict:
-    """Per-extractor quality metrics from one ExtractionResult."""
+def score_result(res: ExtractionResult,
+                 ground_truth: str | None = None) -> dict:
+    """Per-extractor quality metrics from one ExtractionResult.
+
+    When ground_truth is supplied, word-level precision/recall/F1 are
+    included under the "gt" key.
+    """
     words = _words(res.text)
     cells = _table_cells(res.tables)
     density = round(res.char_count / res.n_pages, 1) if res.n_pages else 0.0
@@ -36,18 +42,20 @@ def score_result(res: ExtractionResult) -> dict:
         "warnings": res.warnings,
         "ocr_confidence": res.ocr_confidence,
     }
+    if ground_truth:
+        out["gt"] = score_against_ground_truth(res.text, ground_truth)
     return out
 
 
 def pick_winner(scored: list[dict]) -> dict:
     """Pick the winning extractor.
 
-    Primary signal: most characters extracted (coverage).
+    With ground truth: highest F1 wins (accuracy over verbosity).
+    Without: most characters extracted (coverage).
     Tie-breaks: more tables, then faster, then fewer warnings.
     Returns {"winner": name, "reason": str, "ranked": [names...]}.
-    OCR extractors (tesseract, mistral_ocr) are only eligible when a text
-    extractor found <50 chars/page (i.e. the PDF is likely scanned) —
-    otherwise OCR results are informational only.
+    OCR extractors (tesseract, mistral_ocr) are only eligible when the PDF
+    looks scanned — otherwise OCR results are informational only.
     """
     if not scored:
         return {"winner": None, "reason": "no results", "ranked": []}
@@ -56,33 +64,52 @@ def pick_winner(scored: list[dict]) -> dict:
                 if s["extractor"] not in OCR_EXTRACTORS or s.get("_ocr_eligible")]
     pool = eligible or scored  # fall back to everything if nothing eligible
 
+    has_gt = any("gt" in s for s in pool)
+
     def key(s: dict):
+        if has_gt and "gt" in s:
+            # F1 first, then recall (coverage of expected text).
+            return (s["gt"]["f1"], s["gt"]["recall"],
+                    s["n_tables"], -s["elapsed_s"], -s["n_warnings"])
         return (s["char_count"], s["n_tables"], -s["elapsed_s"],
                 -s["n_warnings"])
 
     ranked = sorted(pool, key=key, reverse=True)
     winner = ranked[0]
     notes = []
-    if len(ranked) > 1 and ranked[1]["char_count"] == winner["char_count"]:
+    if has_gt and "gt" in winner:
+        reason = (f"highest F1 vs ground truth ({winner['gt']['f1']:.3f}; "
+                  f"P={winner['gt']['precision']:.3f}, "
+                  f"R={winner['gt']['recall']:.3f})")
+    else:
+        reason = (f"most characters ({winner['char_count']:,}), "
+                  f"{winner['n_tables']} tables, {winner['elapsed_s']}s")
+    if (len(ranked) > 1 and not has_gt
+            and ranked[1]["char_count"] == winner["char_count"]):
         notes.append(f"tied on chars with {ranked[1]['extractor']}; "
                      f"tables broke the tie ({winner['n_tables']} vs "
                      f"{ranked[1]['n_tables']})")
-    reason = (f"most characters ({winner['char_count']:,}), "
-              f"{winner['n_tables']} tables, {winner['elapsed_s']}s")
     if notes:
         reason += "; " + "; ".join(notes)
     return {"winner": winner["extractor"], "reason": reason,
-            "ranked": [s["extractor"] for s in ranked]}
+            "ranked": [s["extractor"] for s in ranked],
+            "scored_by": "ground_truth_f1" if has_gt else "char_count"}
 
 
 def compare_extractors(pdf_path: str, include_ocr: bool = False,
-                       include_mistral: bool = False) -> dict:
+                       include_mistral: bool = False,
+                       ground_truth: str | None = None,
+                       gt_path: str | None = None) -> dict:
     """Run all text extractors on pdf_path; add OCR when forced or needed.
 
     Local OCR (tesseract) runs when include_ocr=True, or automatically when
     every text extractor finds <50 chars/page (likely scanned). Cloud OCR
     (mistral_ocr) runs only when include_mistral=True and MISTRAL_API_KEY
     is set — it costs API credit, so it is never automatic.
+
+    Ground truth: pass expected text directly, or a gt_path to a .txt file.
+    When absent, a sibling <basename>.txt is auto-loaded if present. With
+    ground truth, the winner is picked by F1 instead of char count.
 
     Returns:
       {"results": {name: metrics}, "winner": {...}, "elapsed_s_total": ...}
@@ -130,8 +157,10 @@ def compare_extractors(pdf_path: str, include_ocr: bool = False,
                 warnings=[f"Mistral OCR crashed: {e}"])
 
     scored = []
+    if ground_truth is None:
+        ground_truth = load_ground_truth(pdf_path, gt_path)
     for name, res in results.items():
-        s = score_result(res)
+        s = score_result(res, ground_truth)
         s["_ocr_eligible"] = (name in OCR_EXTRACTORS and scanned_like)
         scored.append(s)
 
@@ -145,6 +174,7 @@ def compare_extractors(pdf_path: str, include_ocr: bool = False,
         "mistral_attempted": include_mistral,
         "mistral_error": mistral_error,
         "scanned_like": scanned_like,
+        "ground_truth_used": bool(ground_truth),
         "elapsed_s_total": round(time.perf_counter() - t0, 3),
     }
     return out
