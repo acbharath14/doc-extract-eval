@@ -1,6 +1,6 @@
 """CLI for doc-extract-eval.
 
-  python -m doc_extract.runner compare doc.pdf [--ocr] [--output out.json]
+  python -m doc_extract.runner compare doc.pdf [--ocr] [--mistral] [--output out.json]
   python -m doc_extract.runner pipeline doc.pdf [--no-llm] [--model qwen3:8b] [--output out.json]
   python -m doc_extract.runner extract doc.pdf --backend pdfplumber
 """
@@ -31,7 +31,8 @@ def _result_to_json(res: ExtractionResult) -> dict:
 
 def cmd_compare(args: argparse.Namespace) -> int:
     try:
-        out = compare_extractors(args.pdf, include_ocr=args.ocr)
+        out = compare_extractors(args.pdf, include_ocr=args.ocr,
+                                 include_mistral=args.mistral)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
@@ -40,6 +41,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
         "winner": out["winner"],
         "ocr_attempted": out["ocr_attempted"],
         "ocr_error": out["ocr_error"],
+        "mistral_attempted": out["mistral_attempted"],
+        "mistral_error": out["mistral_error"],
         "scanned_like": out["scanned_like"],
         "elapsed_s_total": out["elapsed_s_total"],
         "results": out["results"],
@@ -57,6 +60,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         out = run_pipeline(args.pdf,
                            summarizer="none" if args.no_llm else "ollama",
                            force_ocr=args.ocr,
+                           use_mistral_ocr=args.mistral,
                            model=args.model)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -100,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     p_cmp.add_argument("pdf")
     p_cmp.add_argument("--ocr", action="store_true",
                        help="force Tesseract OCR even for text PDFs")
+    p_cmp.add_argument("--mistral", action="store_true",
+                       help="include Mistral cloud OCR (needs MISTRAL_API_KEY)")
     p_cmp.add_argument("--output", default=None)
     p_cmp.set_defaults(func=cmd_compare)
 
@@ -108,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     p_pipe.add_argument("--no-llm", action="store_true",
                         help="skip LLM summarization (extraction only)")
     p_pipe.add_argument("--ocr", action="store_true")
+    p_pipe.add_argument("--mistral", action="store_true",
+                        help="include Mistral cloud OCR (needs MISTRAL_API_KEY)")
     p_pipe.add_argument("--model", default=None,
                         help="Ollama model (default: $OLLAMA_MODEL or qwen3:8b)")
     p_pipe.add_argument("--output", default=None)
