@@ -61,6 +61,8 @@ If the binaries aren't on your PATH after install, add conda's bin directory:
 export PATH="$PATH:$(conda info --base)/bin"
 ```
 
+To make it permanent, add that line to your `~/.zshrc` (or `~/.bashrc`).
+
 **Mistral OCR (cloud, free tier).** Get a key at
 [console.mistral.ai](https://console.mistral.ai), then:
 
