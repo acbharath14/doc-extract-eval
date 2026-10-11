@@ -112,7 +112,7 @@ if comp:
             "chars/page": m["text_density"],
             "time (s)": m["elapsed_s"],
             "warnings": m["n_warnings"],
-            "OCR conf.": m["ocr_confidence"] if m["ocr_confidence"] else "—",
+            "OCR conf.": f"{m['ocr_confidence']:.1f}" if m["ocr_confidence"] else "—",
         })
     st.dataframe(rows, use_container_width=True, hide_index=True)
     st.caption(f"Winner: **{winner}** — {comp['winner']['reason']}")
