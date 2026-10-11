@@ -58,7 +58,7 @@ def chunk_text(text: str, size: int = 500, overlap: int = 50) -> list[str]:
 
 
 def run_pipeline(pdf_path: str, summarizer: str = "ollama",
-                 force_ocr: bool = False,
+                 force_ocr: bool = False, use_mistral_ocr: bool = False,
                  model: str | None = None) -> dict:
     """Full pipeline. Returns dict with provenance + per-stage timings.
 
@@ -69,7 +69,8 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
 
     # 1. Extract (auto-select best).
     t0 = time.perf_counter()
-    comparison = compare_extractors(pdf_path, include_ocr=force_ocr)
+    comparison = compare_extractors(pdf_path, include_ocr=force_ocr,
+                                    include_mistral=use_mistral_ocr)
     winner_name = comparison["winner"]["winner"]
     winner_metrics = comparison["results"][winner_name]
     stages["extract_s"] = round(time.perf_counter() - t0, 3)
@@ -128,6 +129,8 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
             "extractor": winner_name,
             "extractor_reason": comparison["winner"]["reason"],
             "ocr_attempted": comparison["ocr_attempted"],
+            "mistral_attempted": comparison["mistral_attempted"],
+            "mistral_error": comparison.get("mistral_error"),
             "scanned_like": comparison["scanned_like"],
             "model": model_used if summarizer == "ollama" else None,
             "timestamp": datetime.datetime.now(
