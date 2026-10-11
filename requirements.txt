@@ -4,6 +4,7 @@ PyMuPDF>=1.24
 pytesseract>=0.3.10
 pdf2image>=1.17
 mistralai>=1.0
+cryptography==41.0.7  # pinned: newer versions lack prebuilt wheels for older macOS, forcing a Rust build
 Pillow>=10.0
 fpdf2>=2.7
 streamlit>=1.30
