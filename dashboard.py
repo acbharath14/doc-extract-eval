@@ -147,6 +147,9 @@ if st.button("Run LLM pipeline"):
         except FileNotFoundError as e:
             st.error(str(e))
             st.stop()
+        except RuntimeError as e:
+            st.error(f"Pipeline failed: {e}")
+            st.stop()
 
     prov = result["provenance"]
     c1, c2, c3 = st.columns(3)
