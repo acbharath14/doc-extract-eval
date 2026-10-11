@@ -24,6 +24,9 @@ python -m doc_extract.runner compare samples/business_report.pdf
 # Include Tesseract and Mistral OCR in the comparison
 python -m doc_extract.runner compare samples/invoice.pdf --ocr --mistral --output reports/invoice.json
 
+# Score extractors against expected text (winner picked by F1, not char count)
+python -m doc_extract.runner compare samples/invoice.pdf --ground-truth samples/invoice.txt
+
 # Full pipeline: extract → summarize with Ollama (needs `ollama serve`)
 python -m doc_extract.runner pipeline samples/invoice.pdf --output reports/invoice.json
 
@@ -78,6 +81,11 @@ Tesseract OCR runs automatically when all text extractors find <50 chars/page
 available too — opt-in via the dashboard checkbox or `include_mistral=True`
 (needs `MISTRAL_API_KEY`; free tier at console.mistral.ai). The winner is picked
 by evidence: most characters, then most tables, then speed.
+
+**Ground-truth scoring.** Drop expected text in a `<name>.txt` next to the PDF
+(or paste it in the dashboard, or pass `--ground-truth file.txt`), and each
+extractor is scored on word-level precision / recall / F1. With ground truth,
+the winner is picked by **F1** — accuracy over verbosity.
 
 **2. Run the pipeline.** Auto-selects the best extractor, cleans the text
 (whitespace, de-hyphenation, page-number stripping), chunks it, then asks a
@@ -148,7 +156,7 @@ report's `warnings` / `llm_error` fields — inspectable, not silent.
 │   ├── text_pdf.py     # generates 3-page business report
 │   ├── invoice_pdf.py  # generates 2-page invoice with tables
 │   └── README.md       # how to make a scanned PDF for OCR demo
-├── tests/              # 47 tests, no network (everything mocked)
+├── tests/              # 60 tests, no network (everything mocked)
 ├── dashboard.py        # Streamlit UI
 ├── METHODOLOGY.md      # approaches, trade-offs, metrics explained
 └── .github/workflows/ci.yml  # add via GitHub web UI
