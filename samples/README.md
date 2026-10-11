@@ -1,0 +1,40 @@
+# Sample PDFs
+
+No binary PDFs are committed to this repo. Samples are **generated** by
+scripts so the fixtures are reproducible and version-controlled as code.
+
+## Generating
+
+```bash
+python samples/text_pdf.py --out samples/business_report.pdf
+python samples/invoice_pdf.py --out samples/invoice.pdf
+```
+
+| Script | Output | Pages | Contents |
+|---|---|---|---|
+| `text_pdf.py` | `business_report.pdf` | 3 | Business report: headings, paragraphs, KPI table |
+| `invoice_pdf.py` | `invoice.pdf` | 2 | Invoice: line-items table, totals, dates, addresses |
+
+The dashboard has "Generate samples" buttons that run these scripts on the
+fly, so you don't need to pre-generate anything.
+
+## Scanned-PDF demo (for OCR)
+
+To demo the Tesseract OCR path you need a scanned (image-only) PDF. Two ways:
+
+1. **Print to image:** open `business_report.pdf`, screenshot each page (or
+   "Print → Save as image"), then combine the images into a PDF with any
+   image-to-PDF tool. The result has no embedded text — perfect for OCR.
+2. **ImageMagick** (if installed):
+   ```bash
+   convert -density 150 samples/business_report.pdf scanned_report.pdf
+   ```
+
+Upload the scanned PDF to the dashboard (or pass `--ocr` to the CLI) and
+watch Tesseract kick in automatically when the text extractors find nothing.
+
+**Note:** OCR binaries are required: `tesseract` + `poppler`. Install with
+`conda install -c conda-forge tesseract poppler`
+(or `apt install tesseract-ocr poppler-utils` / `brew install tesseract poppler`).
+OCR accuracy depends heavily on scan quality — 200+ DPI, straight pages,
+good contrast.
