@@ -32,7 +32,8 @@ def _result_to_json(res: ExtractionResult) -> dict:
 def cmd_compare(args: argparse.Namespace) -> int:
     try:
         out = compare_extractors(args.pdf, include_ocr=args.ocr,
-                                 include_mistral=args.mistral)
+                                 include_mistral=args.mistral,
+                                 gt_path=args.ground_truth)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
@@ -43,6 +44,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         "ocr_error": out["ocr_error"],
         "mistral_attempted": out["mistral_attempted"],
         "mistral_error": out["mistral_error"],
+        "ground_truth_used": out["ground_truth_used"],
         "scanned_like": out["scanned_like"],
         "elapsed_s_total": out["elapsed_s_total"],
         "results": out["results"],
@@ -106,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
                        help="force Tesseract OCR even for text PDFs")
     p_cmp.add_argument("--mistral", action="store_true",
                        help="include Mistral cloud OCR (needs MISTRAL_API_KEY)")
+    p_cmp.add_argument("--ground-truth", default=None, metavar="TXT",
+                       help="path to expected text; winner picked by F1")
     p_cmp.add_argument("--output", default=None)
     p_cmp.set_defaults(func=cmd_compare)
 
