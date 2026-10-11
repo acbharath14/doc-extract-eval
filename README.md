@@ -43,8 +43,10 @@ No `PYTHONPATH` needed — `pytest.ini` sets `pythonpath = src`.
 **1. Compare extractors.** Runs pypdf, pdfplumber, and PyMuPDF on your PDF
 and scores each on characters extracted, tables found, speed, and warnings.
 Tesseract OCR runs automatically when all text extractors find <50 chars/page
-(likely a scanned PDF), or when forced with `--ocr`. The winner is picked by
-evidence: most characters, then most tables, then speed.
+(likely a scanned PDF), or when forced with `--ocr`. Mistral cloud OCR is
+available too — opt-in via the dashboard checkbox or `include_mistral=True`
+(needs `MISTRAL_API_KEY`; free tier at console.mistral.ai). The winner is picked
+by evidence: most characters, then most tables, then speed.
 
 **2. Run the pipeline.** Auto-selects the best extractor, cleans the text
 (whitespace, de-hyphenation, page-number stripping), chunks it, then asks a
@@ -73,7 +75,8 @@ plus one-click sample generation.
 | pypdf | Fast | No | Born-digital text PDFs |
 | pdfplumber | Slower | Best | Invoices, reports with tables |
 | PyMuPDF | Fastest | Basic | Large PDFs, layout fidelity |
-| Tesseract OCR | Slow | No | Scanned / image-only PDFs |
+| Tesseract OCR | Slow | No | Scanned / image-only PDFs, offline |
+| Mistral OCR | API-bound | Parsed from markdown | Scanned PDFs, best accuracy (needs API key) |
 
 See [METHODOLOGY.md](METHODOLOGY.md) for when to use which and how the
 metrics work.
@@ -96,7 +99,7 @@ metrics work.
 
 ```
 ├── src/doc_extract/
-│   ├── extractors.py   # pypdf / pdfplumber / pymupdf / tesseract, one interface
+│   ├── extractors.py   # pypdf / pdfplumber / pymupdf / tesseract / mistral_ocr, one interface
 │   ├── metrics.py      # scoring + winner selection
 │   ├── pipeline.py     # extract → clean → chunk → summarize → JSON
 │   ├── summarizer.py   # Ollama client, entity regex, doc classifier
