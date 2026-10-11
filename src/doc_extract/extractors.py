@@ -286,7 +286,8 @@ def extract_mistral_ocr(pdf_path: str) -> ExtractionResult:
         with open(pdf_path, "rb") as fh:
             uploaded = client.files.upload(
                 file={"file_name": os.path.basename(pdf_path),
-                      "content": fh.read()})
+                      "content": fh.read()},
+                purpose="ocr")
         signed = client.files.get_signed_url(file_id=uploaded.id)
         result = client.ocr.process(
             model="mistral-ocr-latest",
