@@ -13,7 +13,10 @@ from doc_extract.extractors import (
     extract_pdfplumber,
     extract_pymupdf,
     extract_tesseract,
+    extract_mistral_ocr,
     EXTRACTORS,
+    OCR_EXTRACTORS,
+    _parse_markdown_tables,
 )
 
 # Generate fixtures once per session.
@@ -102,7 +105,9 @@ def test_empty_pdf_warns(empty_pdf):
 
 
 def test_extractors_registered():
-    assert set(EXTRACTORS) == {"pypdf", "pdfplumber", "pymupdf", "tesseract"}
+    assert set(EXTRACTORS) == {"pypdf", "pdfplumber", "pymupdf",
+                               "tesseract", "mistral_ocr"}
+    assert OCR_EXTRACTORS == {"tesseract", "mistral_ocr"}
 
 
 def test_tesseract_missing_binaries_graceful(tmp_path, monkeypatch):
@@ -116,3 +121,81 @@ def test_tesseract_missing_binaries_graceful(tmp_path, monkeypatch):
     FPDF().output(str(p))
     with pytest.raises(RuntimeError, match="tesseract"):
         extract_tesseract(str(p))
+
+
+def test_mistral_missing_key_raises(tmp_path, monkeypatch):
+    import doc_extract.extractors as ex
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    from fpdf import FPDF
+    p = tmp_path / "y.pdf"
+    FPDF().output(str(p))
+    with pytest.raises(RuntimeError, match="MISTRAL_API_KEY"):
+        extract_mistral_ocr(str(p))
+
+
+def test_mistral_ocr_mocked(tmp_path, monkeypatch):
+    """Mock the Mistral client; no network, no API key value needed."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    class FakePage:
+        def __init__(self, md):
+            self.markdown = md
+
+    class FakeFiles:
+        def upload(self, file):
+            class U:
+                id = "file-1"
+            return U()
+
+        def get_signed_url(self, file_id):
+            class S:
+                url = "https://example.com/signed"
+            return S()
+
+    class FakeOCR:
+        def process(self, model, document):
+            class R:
+                pages = [FakePage(
+                    "# Invoice\n\n| Item | Qty | Price |\n"
+                    "|------|-----|-------|\n"
+                    "| Widget | 2 | $10.00 |\n"
+                    "| Gadget | 1 | $25.00 |\n")]
+            return R()
+
+    class FakeClient:
+        def __init__(self, api_key):
+            self.files = FakeFiles()
+            self.ocr = FakeOCR()
+
+    # The function does `from mistralai import Mistral` at call time,
+    # so inject a fake mistralai module into sys.modules.
+    import sys
+    import types
+    fake_mod = types.ModuleType("mistralai")
+    fake_mod.Mistral = FakeClient
+    monkeypatch.setitem(sys.modules, "mistralai", fake_mod)
+
+    from fpdf import FPDF
+    p = tmp_path / "z.pdf"
+    FPDF().output(str(p))
+    res = extract_mistral_ocr(str(p))
+    _assert_result_shape(res, "mistral_ocr")
+    assert "Invoice" in res.text
+    assert len(res.tables) == 1
+    assert res.tables[0][0] == ["Item", "Qty", "Price"]
+    assert res.tables[0][1] == ["Widget", "2", "$10.00"]
+
+
+def test_parse_markdown_tables():
+    md = ("Some text\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
+          "More text\n\n| X |\n|---|\n| y |\n| z |\n")
+    tables = _parse_markdown_tables(md)
+    assert len(tables) == 2
+    assert tables[0] == [["A", "B"], ["1", "2"]]
+    assert tables[1] == [["X"], ["y"], ["z"]]
+
+
+def test_parse_markdown_tables_skips_single_row():
+    # A lone header with no data rows is not a table.
+    tables = _parse_markdown_tables("| A | B |\n|---|---|\n")
+    assert tables == []
