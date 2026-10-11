@@ -1,11 +1,12 @@
 """Unified PDF text extractors.
 
-Four backends behind one interface so results are directly comparable:
+Five backends behind one interface so results are directly comparable:
 
 - pypdf       — pure Python, fast, good for born-digital text PDFs, no tables
 - pdfplumber  — best table extraction, slower, good text
 - pymupdf     — fastest overall, good text + layout, basic tables
-- tesseract   — OCR for scanned/image PDFs via pytesseract + pdf2image
+- tesseract   — local OCR for scanned/image PDFs via pytesseract + pdf2image
+- mistral_ocr — cloud OCR via the Mistral API (free tier; needs MISTRAL_API_KEY)
 
 Each extractor returns an ExtractionResult. All handle missing files,
 encrypted PDFs, and empty PDFs gracefully.
@@ -13,6 +14,7 @@ encrypted PDFs, and empty PDFs gracefully.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -20,7 +22,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ExtractionResult:
-    extractor: str                     # "pypdf" | "pdfplumber" | "pymupdf" | "tesseract"
+    extractor: str                     # "pypdf" | "pdfplumber" | "pymupdf" | "tesseract" | "mistral_ocr"
     text: str                          # extracted text (may be "")
     n_pages: int                       # pages processed
     tables: list = field(default_factory=list)  # list of tables; each table is list of rows
@@ -232,9 +234,89 @@ def extract_tesseract(pdf_path: str, max_pages: int = 10,
                             ocr_confidence=round(mean_conf, 1) if mean_conf else None)
 
 
+def _parse_markdown_tables(md: str) -> list:
+    """Pull GitHub-flavored markdown tables out of OCR markdown.
+
+    Returns a list of tables; each table is a list of rows (lists of cells).
+    Separator rows (|---|---|) are skipped. Only tables with >=2 data rows
+    are kept, matching the pdfplumber convention.
+    """
+    tables: list = []
+    current: list = []
+    in_table = False
+    for line in md.split("\n"):
+        if re.match(r"^\s*\|.*\|\s*$", line):
+            if re.match(r"^\s*\|[\s\-:|]+\|\s*$", line):
+                continue  # separator row
+            current.append([c.strip() for c in line.strip().strip("|").split("|")])
+            in_table = True
+        else:
+            if in_table and len(current) >= 2:
+                tables.append(current)
+            current, in_table = [], False
+    if in_table and len(current) >= 2:
+        tables.append(current)
+    return tables
+
+
+def extract_mistral_ocr(pdf_path: str) -> ExtractionResult:
+    """OCR a PDF with the Mistral cloud OCR API.
+
+    Needs the MISTRAL_API_KEY environment variable (free tier available at
+    console.mistral.ai). Uploads the PDF, runs mistral-ocr-latest, and
+    returns the markdown output as text plus parsed tables.
+
+    Raises RuntimeError with a setup hint when the API key is missing.
+    """
+    _check_file(pdf_path)
+    api_key = os.environ.get("MISTRAL_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Mistral OCR needs the MISTRAL_API_KEY environment variable. "
+            "Get a free key at https://console.mistral.ai, then export "
+            "MISTRAL_API_KEY=<your key>."
+        )
+
+    from mistralai import Mistral
+
+    t0 = time.perf_counter()
+    warnings: list[str] = []
+    client = Mistral(api_key=api_key)
+    try:
+        with open(pdf_path, "rb") as fh:
+            uploaded = client.files.upload(
+                file={"file_name": os.path.basename(pdf_path),
+                      "content": fh.read()})
+        signed = client.files.get_signed_url(file_id=uploaded.id)
+        result = client.ocr.process(
+            model="mistral-ocr-latest",
+            document={"type": "document_url",
+                      "document_url": signed.url})
+    except Exception as e:
+        return ExtractionResult("mistral_ocr", "", 0,
+                                elapsed_s=time.perf_counter() - t0,
+                                warnings=[f"Mistral OCR API failed: {e}"])
+
+    pages = getattr(result, "pages", []) or []
+    md_parts = [getattr(p, "markdown", "") or "" for p in pages]
+    text = "\n\n".join(md_parts)
+    tables = _parse_markdown_tables(text)
+    n_pages = len(pages)
+    if not text.strip():
+        warnings.append("Mistral OCR returned no text")
+    return ExtractionResult("mistral_ocr", text, n_pages, tables=tables,
+                            elapsed_s=time.perf_counter() - t0,
+                            warnings=warnings)
+
+
 EXTRACTORS: dict[str, callable] = {
     "pypdf": extract_pypdf,
     "pdfplumber": extract_pdfplumber,
     "pymupdf": extract_pymupdf,
     "tesseract": extract_tesseract,
+    "mistral_ocr": extract_mistral_ocr,
 }
+
+#: Extractors that do OCR (cloud or local). Treated specially by the
+#: winner logic: only eligible when the PDF looks scanned.
+OCR_EXTRACTORS = {"tesseract", "mistral_ocr"}
