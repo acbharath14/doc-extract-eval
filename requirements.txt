@@ -3,7 +3,7 @@ pdfplumber>=0.11
 PyMuPDF>=1.24
 pytesseract>=0.3.10
 pdf2image>=1.17
-mistralai>=1.0
+mistralai>=1.0,<2.0  # v1 API: from mistralai import Mistral (v3 restructured everything)
 cryptography==41.0.7  # pinned: newer versions lack prebuilt wheels for older macOS, forcing a Rust build
 Pillow>=10.0
 fpdf2>=2.7
