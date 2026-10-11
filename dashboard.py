@@ -80,10 +80,15 @@ use_mistral = st.checkbox("Include Mistral cloud OCR", value=False,
                         help="Needs MISTRAL_API_KEY. Uses API credit; never automatic.")
 with st.expander("Ground truth (optional)"):
     st.caption("Paste expected text to score extractors by accuracy (F1) "
-               "instead of character count. Or place a `<name>.txt` next to "
-               "the PDF — it's auto-loaded.")
+               "instead of character count. A `<name>.txt` next to the PDF "
+               "is auto-loaded when present.")
+    # Pre-fill from sibling .txt so the user sees what's being used.
+    gt_default = ""
+    if pdf_path:
+        from doc_extract.scoring import load_ground_truth
+        gt_default = load_ground_truth(pdf_path) or ""
     gt_text = st.text_area("Expected text", height=150,
-                           key="gt_text", value="")
+                           key="gt_text", value=gt_default)
 if st.button("Compare extractors", type="primary"):
     with st.spinner("Running pypdf, pdfplumber, PyMuPDF…"):
         try:
