@@ -34,6 +34,14 @@ Slow (seconds per page), accuracy lives and dies by scan quality. Only
 worth it when there's no embedded text. We gate it: OCR runs automatically
 only when every text extractor finds <50 chars/page, or when forced.
 
+**Mistral OCR** is the cloud alternative — upload the PDF to Mistral's API,
+get back clean markdown (including tables). Accuracy is best-in-class and
+it's much faster than Tesseract, but it needs an API key (`MISTRAL_API_KEY`;
+free tier at console.mistral.ai) and costs credit per page. Because it
+costs money, it is *never* automatic — opt in explicitly via
+`include_mistral=True` or the dashboard checkbox. Like Tesseract, its
+results are only eligible to win when the PDF looks scanned.
+
 ### When to use which
 
 | Situation | Pick |
@@ -41,7 +49,8 @@ only when every text extractor finds <50 chars/page, or when forced.
 | Born-digital report, just need text | pypdf (fastest to code) or PyMuPDF (fastest to run) |
 | Invoice / statement with tables | pdfplumber |
 | Large PDF, speed matters | PyMuPDF |
-| Scanned paper, photo of a doc | Tesseract OCR |
+| Scanned paper, photo of a doc, offline | Tesseract OCR |
+| Scanned paper, best accuracy, API ok | Mistral OCR |
 | Unknown / mixed batch | Run all, pick the winner by metrics (that's what `compare` does) |
 
 ## Winner selection
@@ -55,9 +64,9 @@ only when every text extractor finds <50 chars/page, or when forced.
 3. **Speed** (second tie-break) — faster wins when quality ties.
 4. **Warning count** (final tie-break) — fewer extraction failures.
 
-OCR results are only *eligible* to win when the PDF looks scanned
-(all text extractors <50 chars/page). Otherwise a slow OCR run with
-mediocre text shouldn't beat a fast clean text extraction.
+OCR results (tesseract, mistral_ocr) are only *eligible* to win when the PDF
+looks scanned (all text extractors <50 chars/page). Otherwise a slow OCR run
+with mediocre text shouldn't beat a fast clean text extraction.
 
 ## Text cleaning
 
