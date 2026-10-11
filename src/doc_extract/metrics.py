@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from .extractors import EXTRACTORS, ExtractionResult
+from .extractors import EXTRACTORS, OCR_EXTRACTORS, ExtractionResult
 
 
 def _words(text: str) -> int:
@@ -45,14 +45,15 @@ def pick_winner(scored: list[dict]) -> dict:
     Primary signal: most characters extracted (coverage).
     Tie-breaks: more tables, then faster, then fewer warnings.
     Returns {"winner": name, "reason": str, "ranked": [names...]}.
-    OCR results are only eligible when a text extractor found <50 chars/page
-    (i.e. the PDF is likely scanned) — otherwise OCR is informational only.
+    OCR extractors (tesseract, mistral_ocr) are only eligible when a text
+    extractor found <50 chars/page (i.e. the PDF is likely scanned) —
+    otherwise OCR results are informational only.
     """
     if not scored:
         return {"winner": None, "reason": "no results", "ranked": []}
 
     eligible = [s for s in scored
-                if s["extractor"] != "tesseract" or s.get("_ocr_eligible")]
+                if s["extractor"] not in OCR_EXTRACTORS or s.get("_ocr_eligible")]
     pool = eligible or scored  # fall back to everything if nothing eligible
 
     def key(s: dict):
@@ -74,11 +75,16 @@ def pick_winner(scored: list[dict]) -> dict:
             "ranked": [s["extractor"] for s in ranked]}
 
 
-def compare_extractors(pdf_path: str, include_ocr: bool = False) -> dict:
+def compare_extractors(pdf_path: str, include_ocr: bool = False,
+                       include_mistral: bool = False) -> dict:
     """Run all text extractors on pdf_path; add OCR when forced or needed.
 
-    OCR runs when include_ocr=True, or automatically when every text
-    extractor finds <50 chars/page (likely scanned). Returns:
+    Local OCR (tesseract) runs when include_ocr=True, or automatically when
+    every text extractor finds <50 chars/page (likely scanned). Cloud OCR
+    (mistral_ocr) runs only when include_mistral=True and MISTRAL_API_KEY
+    is set — it costs API credit, so it is never automatic.
+
+    Returns:
       {"results": {name: metrics}, "winner": {...}, "elapsed_s_total": ...}
     """
     t0 = time.perf_counter()
@@ -92,7 +98,7 @@ def compare_extractors(pdf_path: str, include_ocr: bool = False) -> dict:
             results[name] = ExtractionResult(
                 name, "", 0, warnings=[f"extractor crashed: {e}"])
 
-    # Decide whether OCR is warranted.
+    # Decide whether local OCR is warranted.
     densities = [r.char_count / r.n_pages for r in results.values()
                  if r.n_pages]
     scanned_like = bool(densities) and all(d < 50 for d in densities)
@@ -110,10 +116,23 @@ def compare_extractors(pdf_path: str, include_ocr: bool = False) -> dict:
             results["tesseract"] = ExtractionResult(
                 "tesseract", "", 0, warnings=[f"OCR crashed: {e}"])
 
+    mistral_error: str | None = None
+    if include_mistral:
+        try:
+            results["mistral_ocr"] = EXTRACTORS["mistral_ocr"](pdf_path)
+        except RuntimeError as e:
+            mistral_error = str(e)  # missing API key → note, not crash
+        except FileNotFoundError:
+            raise
+        except Exception as e:
+            results["mistral_ocr"] = ExtractionResult(
+                "mistral_ocr", "", 0,
+                warnings=[f"Mistral OCR crashed: {e}"])
+
     scored = []
     for name, res in results.items():
         s = score_result(res)
-        s["_ocr_eligible"] = (name == "tesseract" and scanned_like)
+        s["_ocr_eligible"] = (name in OCR_EXTRACTORS and scanned_like)
         scored.append(s)
 
     out = {
@@ -123,6 +142,8 @@ def compare_extractors(pdf_path: str, include_ocr: bool = False) -> dict:
         "winner": pick_winner(scored),
         "ocr_attempted": run_ocr,
         "ocr_error": ocr_error,
+        "mistral_attempted": include_mistral,
+        "mistral_error": mistral_error,
         "scanned_like": scanned_like,
         "elapsed_s_total": round(time.perf_counter() - t0, 3),
     }
