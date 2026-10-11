@@ -75,11 +75,14 @@ if not pdf_path:
 # --- Extractor comparison ---
 
 force_ocr = st.checkbox("Force Tesseract OCR", value=False,
-                        help="Run OCR even when text extractors succeed.")
+                        help="Run local OCR even when text extractors succeed.")
+use_mistral = st.checkbox("Include Mistral cloud OCR", value=False,
+                        help="Needs MISTRAL_API_KEY. Uses API credit; never automatic.")
 if st.button("Compare extractors", type="primary"):
     with st.spinner("Running pypdf, pdfplumber, PyMuPDF…"):
         try:
-            comp = compare_extractors(pdf_path, include_ocr=force_ocr)
+            comp = compare_extractors(pdf_path, include_ocr=force_ocr,
+                                       include_mistral=use_mistral)
         except FileNotFoundError as e:
             st.error(str(e))
             st.stop()
@@ -114,10 +117,12 @@ if comp:
     st.dataframe(rows, use_container_width=True, hide_index=True)
     st.caption(f"Winner: **{winner}** — {comp['winner']['reason']}")
     if comp["ocr_error"]:
-        st.warning(f"OCR skipped: {comp['ocr_error']}")
+        st.warning(f"Tesseract OCR skipped: {comp['ocr_error']}")
+    if comp.get("mistral_error"):
+        st.warning(f"Mistral OCR skipped: {comp['mistral_error']}")
     elif comp["scanned_like"]:
         st.info("PDF looks scanned (all text extractors found <50 chars/page) — "
-                "OCR ran automatically.")
+                "local OCR ran automatically.")
 
     st.subheader("Extracted text per extractor")
     tabs = st.tabs(list(st.session_state["texts"]))
@@ -137,7 +142,8 @@ if st.button("Run LLM pipeline"):
         import os
         os.environ["OLLAMA_MODEL"] = model
         try:
-            result = run_pipeline(pdf_path, force_ocr=force_ocr)
+            result = run_pipeline(pdf_path, force_ocr=force_ocr,
+                                   use_mistral_ocr=use_mistral)
         except FileNotFoundError as e:
             st.error(str(e))
             st.stop()
