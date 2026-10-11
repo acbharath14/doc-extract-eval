@@ -21,6 +21,9 @@ python samples/invoice_pdf.py
 # Compare extractors on a PDF
 python -m doc_extract.runner compare samples/business_report.pdf
 
+# Include Tesseract and Mistral OCR in the comparison
+python -m doc_extract.runner compare samples/invoice.pdf --ocr --mistral --output reports/invoice.json
+
 # Full pipeline: extract → summarize with Ollama (needs `ollama serve`)
 python -m doc_extract.runner pipeline samples/invoice.pdf --output reports/invoice.json
 
@@ -122,6 +125,15 @@ metrics work.
 - **LLM summaries need a local Ollama.** Without `ollama serve`, the
   pipeline returns extraction results with `"summary": null` and a clear
   error — it never crashes, but there's no summary.
+- **Mistral OCR needs quota.** The free tier is rate-limited; 429s are
+  reported as warnings, not crashes. Check your quota in the Mistral console.
+
+## Graceful degradation
+
+Nothing in the pipeline crashes on a missing dependency. One bad extractor
+can't kill a comparison, a missing API key becomes a warning, and a dead
+Ollama still returns extraction results. Every failure is recorded in the
+report's `warnings` / `llm_error` fields — inspectable, not silent.
 
 ## Project structure
 
@@ -136,7 +148,7 @@ metrics work.
 │   ├── text_pdf.py     # generates 3-page business report
 │   ├── invoice_pdf.py  # generates 2-page invoice with tables
 │   └── README.md       # how to make a scanned PDF for OCR demo
-├── tests/              # 41 tests, no network (everything mocked)
+├── tests/              # 47 tests, no network (everything mocked)
 ├── dashboard.py        # Streamlit UI
 ├── METHODOLOGY.md      # approaches, trade-offs, metrics explained
 └── .github/workflows/ci.yml  # add via GitHub web UI
