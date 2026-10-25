@@ -138,6 +138,13 @@ metrics work.
 - **Mistral OCR needs quota.** The free tier is rate-limited; 429s are
   reported as warnings, not crashes. Check your quota in the Mistral console.
 
+## CI
+
+No workflow is shipped yet — this repo has no `.github` directory, so
+nothing runs on PRs. The workflow text to paste via the GitHub web UI is
+in the hygiene PR description (workflow files cannot be pushed via the
+API).
+
 ## Graceful degradation
 
 Nothing in the pipeline crashes on a missing dependency. One bad extractor
@@ -161,5 +168,4 @@ report's `warnings` / `llm_error` fields — inspectable, not silent.
 ├── tests/              # 60 tests, no network (everything mocked)
 ├── dashboard.py        # Streamlit UI
 ├── METHODOLOGY.md      # approaches, trade-offs, metrics explained
-└── .github/workflows/ci.yml  # add via GitHub web UI
 ```

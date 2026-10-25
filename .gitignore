@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+# test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+# generated comparison/pipeline outputs (regenerable via the runner CLI;
+# the checked-in sample PDFs in samples/ are intentional fixtures and
+# are NOT ignored)
+reports/
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
