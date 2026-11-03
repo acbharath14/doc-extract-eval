@@ -110,3 +110,135 @@ def test_parse_summary_json_garbage():
     p = parse_summary_json("not json at all {{{")
     assert p["key_points"] == []
     assert "not json" in p["summary"]
+
+
+# --- Retry + map-reduce (new) ---
+
+from doc_extract.summarizer import (
+    summarize_chunk,
+    summarize_map_reduce,
+    summarize_ollama_with_retry,
+    _generate_with_retry,
+    _reduce_summaries,
+    SINGLE_CALL_CHAR_LIMIT,
+)
+
+
+def _chunk_body(i: int) -> str:
+    return json.dumps({"summary": f"Chunk {i} summary.",
+                       "key_points": [f"point {i}"]})
+
+
+def test_generate_with_retry_succeeds_after_transient_failure():
+    import urllib.error
+    ok = _mock_urlopen(json.dumps({"summary": "S.", "key_points": []}))
+    with patch("urllib.request.urlopen",
+               side_effect=[urllib.error.URLError("timeout"), ok]) as m:
+        out = _generate_with_retry("prompt", model="m", backoff=(0, 0))
+    assert json.loads(out)["summary"] == "S."
+    assert m.call_count == 2
+
+
+def test_generate_with_retry_exhausts_attempts():
+    import urllib.error
+    with patch("urllib.request.urlopen",
+               side_effect=urllib.error.URLError("down")):
+        with pytest.raises(RuntimeError, match="not reachable"):
+            _generate_with_retry("prompt", model="m", attempts=2,
+                                 backoff=(0, 0))
+
+
+def test_summarize_ollama_with_retry_uses_single_bounded_prompt():
+    seen = {}
+
+    def fake(prompt, model=None, host=None, timeout=180, **kw):
+        seen["prompt"] = prompt
+        return '{"summary": "S.", "key_points": []}'
+
+    with patch("doc_extract.summarizer._generate_with_retry",
+               side_effect=fake):
+        out = summarize_ollama_with_retry("x" * (SINGLE_CALL_CHAR_LIMIT + 500),
+                                          model="m")
+    assert out == '{"summary": "S.", "key_points": []}'
+    # Truncation bound still respected on the single-call path.
+    assert len(seen["prompt"]) < len("x" * (SINGLE_CALL_CHAR_LIMIT + 500)) + 2000
+
+
+def test_summarize_chunk_success():
+    body = json.dumps({"summary": "Excerpt about invoices.",
+                       "key_points": ["Total $10"]})
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen(body)):
+        out = summarize_chunk("some excerpt", model="m")
+    assert out["summary"] == "Excerpt about invoices."
+    assert out["key_points"] == ["Total $10"]
+
+
+def _fake_map_reduce_generate(fail_on=()):
+    """Fake _generate_with_retry distinguishing map vs reduce prompts."""
+    calls = {"n": 0}
+
+    def fake(prompt, model=None, host=None, timeout=180, **kw):
+        calls["n"] += 1
+        if "EXCERPT:" in prompt:
+            idx = calls["n"]
+            if idx in fail_on:
+                raise RuntimeError("chunk boom")
+            return _chunk_body(idx)
+        assert "SECTION SUMMARIES:" in prompt
+        return json.dumps({"summary": "Final summary.",
+                           "key_points": ["final point"]})
+
+    return fake, calls
+
+
+def test_map_reduce_happy_path():
+    fake, calls = _fake_map_reduce_generate()
+    chunks = ["chunk one text", "chunk two text", "chunk three text"]
+    with patch("doc_extract.summarizer._generate_with_retry",
+               side_effect=fake):
+        out = summarize_map_reduce("x" * (SINGLE_CALL_CHAR_LIMIT + 1),
+                                   chunks, model="m")
+    assert out["summary"] == "Final summary."
+    assert out["key_points"] == ["final point"]
+    assert out["chunks_failed"] == 0
+    assert out["chunks_summarized"] == 3
+    assert calls["n"] == 4  # 3 map + 1 reduce
+
+
+def test_map_reduce_skips_failed_chunks():
+    fake, calls = _fake_map_reduce_generate(fail_on={2})
+    chunks = ["c1", "c2", "c3"]
+    with patch("doc_extract.summarizer._generate_with_retry",
+               side_effect=fake):
+        out = summarize_map_reduce("x" * (SINGLE_CALL_CHAR_LIMIT + 1),
+                                   chunks, model="m")
+    assert out["summary"] == "Final summary."
+    assert out["chunks_failed"] == 1
+    assert out["chunks_summarized"] == 2
+
+
+def test_map_reduce_all_chunks_fail():
+    def fake(prompt, model=None, host=None, timeout=180, **kw):
+        raise RuntimeError("always fails")
+
+    with patch("doc_extract.summarizer._generate_with_retry",
+               side_effect=fake):
+        with pytest.raises(RuntimeError, match="all chunks failed"):
+            summarize_map_reduce("x" * (SINGLE_CALL_CHAR_LIMIT + 1),
+                                 ["c1", "c2"], model="m")
+
+
+def test_reduce_summaries_hierarchical():
+    calls = []
+
+    def fake(prompt, model=None, host=None, timeout=180, **kw):
+        calls.append(len(prompt))
+        return json.dumps({"summary": "R.", "key_points": []})
+
+    with patch("doc_extract.summarizer._generate_with_retry",
+               side_effect=fake):
+        out = _reduce_summaries(["y" * 9000] * 4, "m", None, 180)
+    assert out["summary"] == "R."
+    # No prompt sent over the limit; recursion absorbed the overflow.
+    assert all(c <= SINGLE_CALL_CHAR_LIMIT + 2000 for c in calls)
+    assert len(calls) == 7  # 4 leaves + 2 halves + 1 final
