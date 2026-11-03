@@ -173,10 +173,11 @@ if st.button("Run LLM pipeline"):
             st.stop()
 
     prov = result["provenance"]
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Extractor", prov["extractor"])
     c2.metric("Document type", result["document_type"])
     c3.metric("Pipeline time", f"{result['stages']['total_s']}s")
+    c4.metric("Summarize time", f"{result['stages']['summarize_s']}s")
 
     if result["llm_error"]:
         st.warning(f"LLM unavailable: {result['llm_error']}")
@@ -196,3 +197,4 @@ if st.button("Run LLM pipeline"):
     with st.expander("Full pipeline JSON"):
         slim = {k: v for k, v in result.items() if k != "comparison"}
         st.json(slim)
+
