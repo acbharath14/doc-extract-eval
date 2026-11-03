@@ -16,7 +16,9 @@ import time
 from .extractors import ExtractionResult
 from .metrics import compare_extractors
 from .summarizer import (
-    summarize_ollama,
+    summarize_ollama_with_retry,
+    summarize_map_reduce,
+    SINGLE_CALL_CHAR_LIMIT,
     parse_summary_json,
     extract_entities,
     classify_document,
@@ -115,13 +117,28 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
     summary: str | None = None
     key_points: list[str] = []
     model_used = model or os.environ.get("OLLAMA_MODEL", "qwen3:8b")
+    summary_mode: str | None = None
     t0 = time.perf_counter()
     if summarizer == "ollama" and cleaned.strip():
         try:
-            raw = summarize_ollama(cleaned, model=model_used)
-            parsed = parse_summary_json(raw)
-            summary = parsed["summary"]
-            key_points = parsed["key_points"]
+            if len(cleaned) > SINGLE_CALL_CHAR_LIMIT:
+                # Long document: map-reduce keeps every per-call prompt
+                # small (no truncation, no timeout blowups). Everything at
+                # or under the limit keeps the exact old single-call path.
+                mr = summarize_map_reduce(cleaned, chunks, model=model_used)
+                summary = mr["summary"]
+                key_points = mr["key_points"]
+                summary_mode = "map_reduce"
+                if mr["chunks_failed"]:
+                    llm_error = (
+                        f"{mr['chunks_failed']} chunk(s) failed during "
+                        "map-reduce summarization; summary covers the rest")
+            else:
+                raw = summarize_ollama_with_retry(cleaned, model=model_used)
+                parsed = parse_summary_json(raw)
+                summary = parsed["summary"]
+                key_points = parsed["key_points"]
+                summary_mode = "single"
         except RuntimeError as e:
             llm_error = str(e)
     elif not cleaned.strip():
@@ -140,6 +157,7 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
             "mistral_error": comparison.get("mistral_error"),
             "scanned_like": comparison["scanned_like"],
             "model": model_used if summarizer == "ollama" else None,
+            "summary_mode": summary_mode,
             "timestamp": datetime.datetime.now(
                 datetime.timezone.utc).isoformat(),
             "n_chunks": len(chunks),
@@ -158,3 +176,4 @@ def run_pipeline(pdf_path: str, summarizer: str = "ollama",
         "comparison": comparison,
         "stages": stages,
     }
+

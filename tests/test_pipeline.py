@@ -88,3 +88,22 @@ def test_pipeline_ollama_success(tmp_path):
 def test_pipeline_missing_file():
     with pytest.raises(FileNotFoundError):
         run_pipeline("/nope/missing.pdf", summarizer="none")
+
+
+def test_pipeline_summary_mode_single(tmp_path):
+    body = json.dumps({"summary": "Invoice for $X.", "key_points": ["Due Oct 31"]})
+    with patch("urllib.request.urlopen", return_value=_mock_ollama(body)):
+        out = run_pipeline(_sample_pdf(tmp_path), summarizer="ollama")
+    assert out["provenance"]["summary_mode"] == "single"
+    assert out["summary"] == "Invoice for $X."
+
+
+def test_pipeline_summary_mode_map_reduce(tmp_path, monkeypatch):
+    # Force the long-document path without needing a huge PDF.
+    monkeypatch.setattr("doc_extract.pipeline.SINGLE_CALL_CHAR_LIMIT", 10)
+    body = json.dumps({"summary": "S.", "key_points": ["k"]})
+    with patch("urllib.request.urlopen", return_value=_mock_ollama(body)):
+        out = run_pipeline(_sample_pdf(tmp_path), summarizer="ollama")
+    assert out["provenance"]["summary_mode"] == "map_reduce"
+    assert out["summary"] == "S."
+    assert out["llm_error"] is None
