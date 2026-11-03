@@ -73,7 +73,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         "winner": out["comparison"]["winner"],
         "ocr_attempted": out["comparison"]["ocr_attempted"],
     }
-    print(json.dumps(stdout_view, indent=2)[:6000])
+    print(json.dumps(stdout_view, indent=2))
     if args.output:
         p = Path(args.output)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -139,3 +139,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
