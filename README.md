@@ -6,7 +6,7 @@ for structured business summaries. Upload a doc, watch each stage, see which
 extractor wins.
 
 This demos the classic document-AI flow: **extract → clean → chunk →
-summarize → structured data** — the same approach behind invoice processing,
+summarize → structured data**: the same approach behind invoice processing,
 contract review, and report digestion pipelines.
 
 ## Quickstart
@@ -43,11 +43,11 @@ pytest tests/ -v
 streamlit run dashboard.py
 ```
 
-No `PYTHONPATH` needed — `pytest.ini` sets `pythonpath = src`.
+No `PYTHONPATH` needed: `pytest.ini` sets `pythonpath = src`.
 
 ## OCR setup
 
-**Tesseract (local, free).** `pytesseract` on pip is only a wrapper — you
+**Tesseract (local, free).** `pytesseract` on pip is only a wrapper: you
 also need the `tesseract` and `poppler` system binaries:
 
 ```bash
@@ -70,7 +70,7 @@ To make it permanent, add that line to your `~/.zshrc` (or `~/.bashrc`).
 export MISTRAL_API_KEY=your-key-here
 ```
 
-Note: `requirements.txt` pins `mistralai>=1.0,<2.0` — v3 restructured the
+Note: `requirements.txt` pins `mistralai>=1.0,<2.0`. v3 restructured the
 entire SDK API. The free tier is rate-limited; if you hit 429s, wait a few
 minutes and retry, or check your quota in the Mistral console.
 
@@ -80,18 +80,20 @@ minutes and retry, or check your quota in the Mistral console.
 and scores each on characters extracted, tables found, speed, and warnings.
 Tesseract OCR runs automatically when all text extractors find <50 chars/page
 (likely a scanned PDF), or when forced with `--ocr`. Mistral cloud OCR is
-available too — opt-in via the dashboard checkbox or `include_mistral=True`
+available too, opt-in via the dashboard checkbox or `include_mistral=True`
 (needs `MISTRAL_API_KEY`; free tier at console.mistral.ai). The winner is picked
 by evidence: most characters, then most tables, then speed.
 
 **Ground-truth scoring.** Drop expected text in a `<name>.txt` next to the PDF
 (or paste it in the dashboard, or pass `--ground-truth file.txt`), and each
 extractor is scored on word-level precision / recall / F1. With ground truth,
-the winner is picked by **F1** — accuracy over verbosity.
+the winner is picked by **F1**: accuracy over verbosity.
 
 **2. Run the pipeline.** Auto-selects the best extractor, cleans the text
 (whitespace, de-hyphenation, page-number stripping), chunks it, then asks a
-local Ollama model for a business summary plus structured fields:
+local Ollama model for a business summary plus structured fields. Long
+documents (over 12,000 characters) are summarized map-reduce instead:
+each chunk is summarized first, then the chunk summaries are combined.
 
 ```json
 {
@@ -106,7 +108,7 @@ Every run records provenance: which extractor won and why, which model was
 used, per-stage timings.
 
 **3. Visualize.** The Streamlit dashboard gives you side-by-side extractor
-comparison, per-extractor text tabs, and the LLM summary with entities —
+comparison, per-extractor text tabs, and the LLM summary with entities,
 plus one-click sample generation.
 
 ## The extractors
@@ -134,23 +136,22 @@ metrics work.
   return "unknown" rather than guessing wrong.
 - **LLM summaries need a local Ollama.** Without `ollama serve`, the
   pipeline returns extraction results with `"summary": null` and a clear
-  error — it never crashes, but there's no summary.
+  error. It never crashes, but there's no summary.
 - **Mistral OCR needs quota.** The free tier is rate-limited; 429s are
   reported as warnings, not crashes. Check your quota in the Mistral console.
 
 ## CI
 
-No workflow is shipped yet — this repo has no `.github` directory, so
-nothing runs on PRs. The workflow text to paste via the GitHub web UI is
-in the hygiene PR description (workflow files cannot be pushed via the
-API).
+No CI workflow is shipped yet: there is no `.github` directory, so
+nothing runs automatically on pull requests. Run the suite locally with
+`pytest tests/ -v`.
 
 ## Graceful degradation
 
 Nothing in the pipeline crashes on a missing dependency. One bad extractor
 can't kill a comparison, a missing API key becomes a warning, and a dead
 Ollama still returns extraction results. Every failure is recorded in the
-report's `warnings` / `llm_error` fields — inspectable, not silent.
+report's `warnings` / `llm_error` fields: inspectable, not silent.
 
 ## Project structure
 
@@ -165,7 +166,7 @@ report's `warnings` / `llm_error` fields — inspectable, not silent.
 │   ├── text_pdf.py     # generates 3-page business report
 │   ├── invoice_pdf.py  # generates 2-page invoice with tables
 │   └── README.md       # how to make a scanned PDF for OCR demo
-├── tests/              # 60 tests, no network (everything mocked)
+├── tests/              # 70 tests, no network (everything mocked)
 ├── dashboard.py        # Streamlit UI
 ├── METHODOLOGY.md      # approaches, trade-offs, metrics explained
 ```
